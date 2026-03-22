@@ -1,93 +1,103 @@
 import 'dart:math';
-import '../models/word_entry.dart';
-import '../services/dictionary_service.dart';
+import 'stuff_service.dart';
 
-/// Manages the state of a dictionary reading session.
-/// Keeps track of previously read words to avoid repetition and handles
-/// the logic for selecting the next word from definitions.
+/// Manages the state of a stuff reading session.
+/// Keeps track of previously read items to avoid repetition and handles
+/// the logic for selecting the next item from content.
 class SessionManager {
-  final DictionaryService _dictionaryService;
+  StuffService _service;
   final Random _random = Random();
   
-  /// Set of IDs of words that have already been read in this session.
-  final Set<int> _readWordIds = {};
+  /// Set of IDs of entries that have already been read in this session.
+  final Set<String> _readEntryIds = {};
   
-  /// The word currently being read.
-  WordEntry? _currentWord;
+  /// The entry currently being read.
+  StuffEntry? _currentEntry;
   
-  /// The list of words found in the current definition that are available in the dictionary.
-  final List<int> _candidatesFromDefinition = [];
+  /// The list of candidates found in the current content that are available.
+  final List<String> _candidatesFromContent = [];
 
-  SessionManager(this._dictionaryService);
+  SessionManager(this._service);
 
-  /// The current word entry.
-  WordEntry? get currentWord => _currentWord;
-
-  /// Starts a new session or continues by picking a random first word.
-  Future<WordEntry?> pickRandomWord() async {
-    final available = _dictionaryService.availableRecords;
-    if (available.isEmpty) return null;
-
-    // Filter out already read words if possible
-    final unread = available.where((e) => !_readWordIds.contains(e.id)).toList();
-    
-    final pool = unread.isNotEmpty ? unread : available;
-    final selection = pool[_random.nextInt(pool.length)];
-    
-    return _setCurrentWord(selection.id);
+  /// Updates the service being used by the manager.
+  void setService(StuffService service) {
+    print('Entering SessionManager.setService');
+    _service = service;
+    resetSession();
+    print('Exiting SessionManager.setService');
   }
 
-  /// Sets the current word and parses its definition for potential next words.
-  Future<WordEntry?> _setCurrentWord(int id) async {
-    final entry = await _dictionaryService.getWordById(id);
-    if (entry == null) return null;
+  /// The current entry.
+  StuffEntry? get currentEntry => _currentEntry;
 
-    _currentWord = entry;
-    _readWordIds.add(id);
-    _candidatesFromDefinition.clear();
+  /// Starts a new session or continues by picking a random first word.
+  Future<StuffEntry?> pickRandomWord() async {
+    print('Entering SessionManager.pickRandomWord');
+    final available = await _service.getAvailableEntryIds();
+    if (available.isEmpty) {
+      print('Exiting SessionManager.pickRandomWord - no entries available');
+      return null;
+    }
 
-    // Parse definitions for available words
-    final wordsInDef = _parseWords(entry.definition);
-    for (var w in wordsInDef) {
-      final ids = _dictionaryService.findWordIds(w);
-      if (ids != null) {
-        for (var matchId in ids) {
-          if (!_readWordIds.contains(matchId)) {
-            _candidatesFromDefinition.add(matchId);
-          }
-        }
+    // Filter out already read entries if possible
+    final unread = available.where((id) => !_readEntryIds.contains(id)).toList();
+    
+    final pool = unread.isNotEmpty ? unread : available;
+    final selectionId = pool[_random.nextInt(pool.length)];
+    
+    final result = await _setCurrentEntry(selectionId);
+    print('Exiting SessionManager.pickRandomWord - selected: ${result?.title}');
+    return result;
+  }
+
+  /// Sets the current entry and parses its content for potential next items.
+  Future<StuffEntry?> _setCurrentEntry(String id) async {
+    print('Entering SessionManager._setCurrentEntry with id: $id');
+    final entry = await _service.getEntryById(id);
+    if (entry == null) {
+      print('Exiting SessionManager._setCurrentEntry - entry not found');
+      return null;
+    }
+
+    _currentEntry = entry;
+    _readEntryIds.add(id);
+    _candidatesFromContent.clear();
+
+    // Find candidates in the content
+    final foundIds = _service.findEntryIdsInText(entry.content);
+    for (var matchId in foundIds) {
+      if (!_readEntryIds.contains(matchId)) {
+        _candidatesFromContent.add(matchId);
       }
     }
 
+    print('Exiting SessionManager._setCurrentEntry - candidates found: ${_candidatesFromContent.length}');
     return entry;
   }
 
   /// Picks the next word based on the rules:
-  /// 1. Randomly from unread words in the current definition.
-  /// 2. If exhausted, randomly from all unread words in the dictionary.
-  Future<WordEntry?> pickNextWord() async {
-    if (_candidatesFromDefinition.isNotEmpty) {
-      final nextId = _candidatesFromDefinition[_random.nextInt(_candidatesFromDefinition.length)];
-      return _setCurrentWord(nextId);
+  /// 1. Randomly from unread items found in the current content.
+  /// 2. If exhausted, randomly from all unread items in the service.
+  Future<StuffEntry?> pickNextWord() async {
+    print('Entering SessionManager.pickNextWord');
+    StuffEntry? result;
+    if (_candidatesFromContent.isNotEmpty) {
+      final nextId = _candidatesFromContent[_random.nextInt(_candidatesFromContent.length)];
+      result = await _setCurrentEntry(nextId);
     } else {
-      return pickRandomWord();
+      result = await pickRandomWord();
     }
+    print('Exiting SessionManager.pickNextWord - selected: ${result?.title}');
+    return result;
   }
 
   /// Resets the session history.
   void resetSession() {
-    _readWordIds.clear();
-    _currentWord = null;
-    _candidatesFromDefinition.clear();
-  }
-
-  /// Extracts words from a string using regex.
-  List<String> _parseWords(String text) {
-    return text
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-zA-Z\s]'), ' ')
-        .split(RegExp(r'\s+'))
-        .where((s) => s.isNotEmpty)
-        .toList();
+    print('Entering SessionManager.resetSession');
+    _readEntryIds.clear();
+    _currentEntry = null;
+    _candidatesFromContent.clear();
+    print('Exiting SessionManager.resetSession');
   }
 }
+

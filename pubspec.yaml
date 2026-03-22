@@ -39,6 +39,8 @@ dependencies:
   path: ^1.9.1
   path_provider: ^2.1.5
   flutter_tts: ^4.2.5
+  http: ^1.6.0
+  html: ^0.15.6
 
 dev_dependencies:
   flutter_test:

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import '../models/word_entry.dart';
+import '../logic/stuff_service.dart';
 import '../services/dictionary_service.dart';
+import '../services/wikipedia_service.dart';
 import '../services/tts_service.dart';
 import '../logic/session_manager.dart';
 
 /// The primary view for the dictionary reader application.
-/// It displays the current word, its definition, and handles session control.
+/// It displays the current item, its content, and handles session control.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -14,29 +15,59 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final DictionaryService _dictionaryService = DictionaryService();
+  final List<StuffService> _services = [
+    DictionaryService(),
+    WikipediaStuffService(),
+  ];
+  late StuffService _currentService;
   final TtsService _ttsService = TtsService();
   late SessionManager _sessionManager;
   
   bool _isLoading = true;
   bool _isPlaying = false;
   
-  WordEntry? _currentWord;
+  StuffEntry? _currentWord;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _sessionManager = SessionManager(_dictionaryService);
+    _currentService = _services.first;
+    _sessionManager = SessionManager(_currentService);
     _initApp();
   }
 
   Future<void> _initApp() async {
     try {
-      await _dictionaryService.init();
+      await _currentService.init();
       setState(() => _isLoading = false);
     } catch (e) {
-      setState(() => _error = 'Error loading dictionary: $e');
+      setState(() => _error = 'Error loading service: $e');
+    }
+  }
+
+  void _onServiceChanged(StuffService? newService) async {
+    if (newService == null || newService == _currentService) return;
+    
+    await _ttsService.stop();
+    
+    setState(() {
+      _isLoading = true;
+      _currentService = newService;
+      _currentWord = null;
+      _isPlaying = false;
+      _error = null;
+    });
+
+    try {
+      await _currentService.init();
+      _sessionManager.setService(_currentService);
+      setState(() => _isLoading = false);
+    } catch (e) {
+      setState(() {
+        _error = 'Error switching service: $e';
+        _isLoading = false;
+      });
     }
   }
 
@@ -85,18 +116,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {}); // Update UI for the current word
 
-    // 1. Read the word name
-    await _ttsService.speak(_currentWord!.word);
+    // 1. Read the title
+    await _ttsService.speak(_currentWord!.title);
     
-    // Set a completion handler to continue to the definition
+    // Set a completion handler to continue to the content
     _ttsService.onCompletion = () async {
       if (!_isPlaying || _currentWord == null) return;
       
-      // Clear word highlight and start reading definition
+      // Clear highlight and start reading content
       await Future.delayed(const Duration(milliseconds: 500));
       
-      // 2. Read the definition
-      await _ttsService.speak(_currentWord!.definition);
+      // 2. Read the content
+      await _ttsService.speak(_currentWord!.content);
       
       _ttsService.onCompletion = () async {
         if (!_isPlaying) return;
@@ -124,6 +155,10 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Stuff Reader'),
         elevation: 8,
+        actions: [
+          _buildServiceSelector(),
+          const SizedBox(width: 8),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -136,6 +171,27 @@ class _HomeScreenState extends State<HomeScreen> {
         label: Text(_isPlaying ? 'Stop Session' : 'Random Session'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
+      ),
+    );
+  }
+
+  Widget _buildServiceSelector() {
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<StuffService>(
+        value: _currentService,
+        items: _services.map((service) {
+          return DropdownMenuItem<StuffService>(
+            value: service,
+            child: Text(
+              service.canonicalTitle,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          );
+        }).toList(),
+        onChanged: _onServiceChanged,
+        dropdownColor: Theme.of(context).primaryColor,
+        style: const TextStyle(color: Colors.white),
+        iconEnabledColor: Colors.white,
       ),
     );
   }
@@ -165,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _HighlightableText(
-            text: _currentWord!.word,
+            text: _currentWord!.title,
             style: Theme.of(context).textTheme.displayMedium!.copyWith(
                   fontWeight: FontWeight.bold,
                   color: Colors.deepPurple,
@@ -175,7 +231,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const Divider(height: 48, thickness: 2),
           Text(
-            'DEFINITION',
+            'CONTENT',
             style: Theme.of(context).textTheme.labelLarge!.copyWith(
                   letterSpacing: 2,
                   color: Colors.grey[600],
@@ -183,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 16),
           _HighlightableText(
-            text: _currentWord!.definition,
+            text: _currentWord!.content,
             style: Theme.of(context).textTheme.headlineSmall!.copyWith(
                   height: 1.5,
                   fontWeight: FontWeight.normal,
@@ -198,7 +254,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _dictionaryService.dispose();
+    for (var service in _services) {
+      service.dispose();
+    }
     _ttsService.stop();
     super.dispose();
   }
