@@ -72,42 +72,52 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Handles the "Stop" action from the UI.
+  void _onStopPressed() async {
+    print('Entering _HomeScreenState._onStopPressed');
+    await _ttsService.stop();
+    setState(() => _isPlaying = false);
+    print('Exiting _HomeScreenState._onStopPressed');
+  }
+
   /// Starts or stops the reading session.
   void _toggleSession() async {
-    if (_isPlaying) {
-      await _ttsService.stop();
-      setState(() => _isPlaying = false);
-    } else {
-      _startSession();
-    }
+    print('Entering _HomeScreenState._toggleSession');
+    _sessionManager.resetSession();
+    _currentWord = null;
+    _startSession();
+    print('Exiting _HomeScreenState._toggleSession');
   }
 
   /// Handles the sequence of reading the word then its definitions.
   Future<void> _startSession() async {
+    print('Entering _HomeScreenState._startSession');
+    await _ttsService.stop(); // Ensure any current speech is stopped
     setState(() {
       _isPlaying = true;
       _error = null;
     });
 
     try {
-      // Pick initial random word if none is selected
+      // Always pick a new random word when starting a session
+      _currentWord = await _sessionManager.pickRandomWord();
       if (_currentWord == null) {
-        _currentWord = await _sessionManager.pickRandomWord();
-        if (_currentWord == null) {
-          setState(() {
-            _error = 'No words available in dictionary.';
-            _isPlaying = false;
-          });
-          return;
-        }
+        setState(() {
+          _error = 'No words available in dictionary.';
+          _isPlaying = false;
+        });
+        print('Exiting _HomeScreenState._startSession - no words found');
+        return;
       }
       
       _readCurrentWordSequence();
+      print('Exiting _HomeScreenState._startSession');
     } catch (e) {
       setState(() {
         _error = 'Error in session: $e';
         _isPlaying = false;
       });
+      print('Exiting _HomeScreenState._startSession with error: $e');
     }
   }
 
@@ -180,12 +190,28 @@ class _HomeScreenState extends State<HomeScreen> {
           : _error != null
               ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
               : _buildContent(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _toggleSession,
-        icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow),
-        label: Text(_isPlaying ? 'Stop Session' : 'Random Session'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isPlaying)
+            FloatingActionButton.extended(
+              onPressed: _onStopPressed,
+              icon: const Icon(Icons.stop),
+              label: const Text('Stop Session'),
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              heroTag: 'stop_fab',
+            ),
+          if (_isPlaying) const SizedBox(height: 16),
+          FloatingActionButton.extended(
+            onPressed: _toggleSession,
+            icon: const Icon(Icons.shuffle),
+            label: const Text('Random Session'),
+            backgroundColor: Colors.deepPurple,
+            foregroundColor: Colors.white,
+            heroTag: 'random_fab',
+          ),
+        ],
       ),
     );
   }
