@@ -4,6 +4,7 @@ import '../services/dictionary_service.dart';
 import '../services/wikipedia_service.dart';
 import '../services/tts_service.dart';
 import '../logic/session_manager.dart';
+import 'preferences_view.dart';
 
 /// The primary view for the dictionary crawler application.
 /// It displays the current item, its content, and handles session control.
@@ -110,43 +111,47 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// The core recursive sequence to read current word -> definition -> next word.
+  /// The core sequence to read current word -> definition -> next word.
   Future<void> _readCurrentWordSequence() async {
     if (!_isPlaying || _currentWord == null) return;
 
+    print('Starting reading sequence for: ${_currentWord!.title}');
     setState(() {}); // Update UI for the current word
 
-    // 1. Read the title
-    await _ttsService.speak(_currentWord!.title);
-    
-    // Set a completion handler to continue to the content
-    _ttsService.onCompletion = () async {
+    try {
+      // 1. Read the title
+      await _ttsService.speak(_currentWord!.title, awaitCompletion: true);
+      
       if (!_isPlaying || _currentWord == null) return;
       
-      // Clear highlight and start reading content
+      // Small pause between title and content
       await Future.delayed(const Duration(milliseconds: 500));
-      
-      // 2. Read the content
-      await _ttsService.speak(_currentWord!.content);
-      
-      _ttsService.onCompletion = () async {
-        if (!_isPlaying) return;
+      if (!_isPlaying || _currentWord == null) return;
 
-        // 3. Pick next word and continue
-        await Future.delayed(const Duration(seconds: 1));
-        final nextWord = await _sessionManager.pickNextWord();
-        
-        if (nextWord != null) {
-          _currentWord = nextWord;
-          _readCurrentWordSequence();
-        } else {
-          setState(() {
-            _isPlaying = false;
-            _error = 'Reached the end of the session.';
-          });
-        }
-      };
-    };
+      // 2. Read the content
+      await _ttsService.speak(_currentWord!.content, awaitCompletion: true);
+      
+      if (!_isPlaying || _currentWord == null) return;
+
+      // 3. Pick next word and continue if still playing
+      await Future.delayed(const Duration(seconds: 1));
+      if (!_isPlaying || _currentWord == null) return;
+
+      final nextWord = await _sessionManager.pickNextWord();
+      
+      if (nextWord != null) {
+        _currentWord = nextWord;
+        _readCurrentWordSequence();
+      } else {
+        setState(() {
+          _isPlaying = false;
+          _error = 'Reached the end of the session.';
+        });
+      }
+    } catch (e) {
+      print('Speech interrupted or error occurred: $e');
+      // We don't necessarily want to stop the whole session on interruption
+    }
   }
 
   @override
@@ -157,6 +162,16 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 8,
         actions: [
           _buildServiceSelector(),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              print('Navigating to PreferencesView');
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => PreferencesView(ttsService: _ttsService)),
+              );
+            },
+          ),
           const SizedBox(width: 8),
         ],
       ),
