@@ -4,7 +4,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 
 /// Service to handle text-to-speech with progress reporting for highlighting.
 class TtsService {
-  final FlutterTts _flutterTts = FlutterTts();
+  final FlutterTts _flutterTts;
 
   /// The text currently being spoken.
   final ValueNotifier<String?> currentText = ValueNotifier(null);
@@ -29,15 +29,13 @@ class TtsService {
 
   Completer<void>? _completionCompleter;
 
-  TtsService() {
+  TtsService({FlutterTts? flutterTts}) : _flutterTts = flutterTts ?? FlutterTts() {
     _initTts();
   }
 
   Future<void> _initTts() async {
-    await _flutterTts.setLanguage("en-US");
-    await _flutterTts.setSpeechRate(_speechRate);
-    await _flutterTts.setVolume(1.0);
-    await _flutterTts.setPitch(1.0);
+    print('Entering TtsService._initTts');
+    await _applyCurrentSettings();
 
     _flutterTts.setProgressHandler((
       String text,
@@ -91,12 +89,102 @@ class TtsService {
       _completionCompleter = Completer<void>();
     }
     
-    await _flutterTts.speak(text);
+    final parts = splitTextForPauses(text);
+
+    int currentOffset = 0;
+    for (var part in parts) {
+      if (part is String) {
+        // We need to manage offset correctly for highlighting
+        // But the highlighter uses the string offset of the FULL text.
+        // flutter_tts gives progress of THE CURRENT speak() call.
+        // For multiple speak() calls, we'd need to shift the reported offsets.
+        
+        _flutterTts.setProgressHandler((t, start, end, word) {
+          speakingRange.value = (start: currentOffset + start, end: currentOffset + end);
+        });
+
+        // Wait for this specific part to finish
+        final partCompleter = Completer<void>();
+        _flutterTts.setCompletionHandler(() {
+          partCompleter.complete();
+        });
+        
+        await _flutterTts.speak(part);
+        await partCompleter.future;
+
+        // Restore global handlers after each part
+        _flutterTts.setProgressHandler((t, start, end, word) {
+          speakingRange.value = (start: currentOffset + start, end: currentOffset + end);
+        });
+
+        _flutterTts.setCompletionHandler(() {
+          speakingRange.value = null;
+          if (!_isInternalRestart) {
+            currentText.value = null;
+            onCompletion?.call();
+            _completionCompleter?.complete();
+            _completionCompleter = null;
+          }
+        });
+        
+        currentOffset += part.length;
+      } else if (part is Duration) {
+        await Future.delayed(part);
+      }
+    }
+    
+    // Final restoration of default handlers
+    await _initTts();
     
     if (awaitCompletion) {
-      await _completionCompleter?.future;
+      _completionCompleter?.complete();
+      _completionCompleter = null;
     }
     print('Exiting TtsService.speak');
+  }
+
+  /// Splits text into parts and pause durations.
+  /// Numbers at the start of a new line followed by a period 
+  /// (e.g., "\n1.") trigger a brief pause before and after.
+  List<dynamic> splitTextForPauses(String text) {
+    print('Entering TtsService.splitTextForPauses');
+    final List<dynamic> parts = [];
+    final pause = const Duration(milliseconds: 100);
+
+    // Regex to find "new line" followed by "number."
+    // OR just "number." at the very start of the string.
+    final regExp = RegExp(r'(^|\n)(\d+)(\.)');
+    
+    int lastMatchEnd = 0;
+    final matches = regExp.allMatches(text);
+
+    for (final match in matches) {
+      // Content before the match starts (before the delimiter)
+      if (match.start > lastMatchEnd) {
+        parts.add(text.substring(lastMatchEnd, match.start));
+      }
+
+      final prefix = match.group(1)!;
+      final number = match.group(2)!;
+      final dot = match.group(3)!;
+
+      if (prefix.isNotEmpty) {
+        parts.add(prefix);
+      }
+      
+      parts.add(pause);
+      parts.add('$number$dot');
+      parts.add(pause);
+
+      lastMatchEnd = match.end;
+    }
+
+    if (lastMatchEnd < text.length) {
+      parts.add(text.substring(lastMatchEnd));
+    }
+
+    print('Exiting TtsService.splitTextForPauses - result is ${parts.length} parts');
+    return parts;
   }
 
   /// Stops current speaking.
@@ -210,5 +298,19 @@ class TtsService {
       await _internalRestart();
     }
     print('Exiting TtsService.resetVoice');
+  }
+
+  /// Applies the current voice, language, and rate settings to the TTS engine.
+  Future<void> _applyCurrentSettings() async {
+    print('Entering TtsService._applyCurrentSettings');
+    await _flutterTts.setLanguage(currentLocale);
+    await _flutterTts.setSpeechRate(_speechRate);
+    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setPitch(1.0);
+    if (currentVoice != null) {
+      final Map<String, String> voiceMap = currentVoice!.cast<String, String>();
+      await _flutterTts.setVoice(voiceMap);
+    }
+    print('Exiting TtsService._applyCurrentSettings');
   }
 }
