@@ -11,7 +11,7 @@ abstract class StuffEntry {
   String get content;
 }
 
-/// Base class for all services that provide "stuff" to the reader.
+/// Base class for all services that provide "stuff" to the crawler.
 abstract class StuffService {
   /// A unique identifier for the service itself.
   String get serviceId;

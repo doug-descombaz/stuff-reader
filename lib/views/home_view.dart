@@ -5,7 +5,7 @@ import '../services/wikipedia_service.dart';
 import '../services/tts_service.dart';
 import '../logic/session_manager.dart';
 
-/// The primary view for the dictionary reader application.
+/// The primary view for the dictionary crawler application.
 /// It displays the current item, its content, and handles session control.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -153,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Stuff Reader'),
+        title: const Text('Stuff Crawler'),
         elevation: 8,
         actions: [
           _buildServiceSelector(),
@@ -205,7 +205,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const Icon(Icons.menu_book, size: 100, color: Colors.grey),
             const SizedBox(height: 20),
             Text(
-              'Welcome to Stuff Reader!',
+              'Welcome to Stuff Crawler!',
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 10),

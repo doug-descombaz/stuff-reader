@@ -3,17 +3,17 @@ import 'views/home_view.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const StuffReaderApp());
+  runApp(const StuffCrawlerApp());
 }
 
-/// The root widget of the Stuff Reader application.
-class StuffReaderApp extends StatelessWidget {
-  const StuffReaderApp({super.key});
+/// The root widget of the Stuff Crawler application.
+class StuffCrawlerApp extends StatelessWidget {
+  const StuffCrawlerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Stuff Reader',
+      title: 'Stuff Crawler',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

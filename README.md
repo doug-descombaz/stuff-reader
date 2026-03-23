@@ -1,4 +1,4 @@
-# Stuff Reader
+# Stuff Crawler
 
 A Flutter application for MacOS that reads words from a dictionary database and recites them using text-to-speech.
 
